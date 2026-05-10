@@ -1,0 +1,33 @@
+{
+  "manifest_version": 3,
+  "name": "YT Ollama Translator",
+  "version": "1.0",
+  "description": "拦截 YouTube 视频英文字幕，调用本地 Ollama 模型进行实时翻译并渲染双语字幕。",
+  "permissions": [
+    "storage",
+    "scripting",
+    "activeTab"
+  ],
+  "host_permissions": [
+    "*://*.youtube.com/*",
+    "http://localhost:11434/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "字幕翻译设置"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://*.youtube.com/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}
