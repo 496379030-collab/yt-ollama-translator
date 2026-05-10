@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "YT Ollama Translator",
+  "name": "YouTube Realtime English Video Translator",
   "version": "1.0",
   "description": "拦截 YouTube 视频英文字幕，调用本地 Ollama 模型进行实时翻译并渲染双语字幕。",
   "permissions": [
@@ -14,7 +14,7 @@
   ],
   "action": {
     "default_popup": "popup.html",
-    "default_title": "字幕翻译设置"
+    "default_title": "翻译设置"
   },
   "background": {
     "service_worker": "background.js"
