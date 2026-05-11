@@ -1,65 +1,74 @@
-// background.js 运行在后台，不认识 document，只负责 fetch 翻译
+// background.js
+let contextHistory = []; // 核心：用于保存过去几句的字幕，提供上下文语境
+
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'translate') {
     handleTranslation(request.text, sendResponse);
-    return true; // 保持通道以支持异步 fetch
+    return true; 
+  } else if (request.action === 'clear_context') {
+    // 切换视频或遇到广告时清空记忆
+    contextHistory = [];
+    sendResponse({ status: 'cleared' });
   }
 });
 
 async function handleTranslation(englishText, sendResponse) {
   try {
-    // 1. 获取用户设置
     const data = await chrome.storage.local.get(['isEnabled', 'modelName']);
-    const isEnabled = data.isEnabled !== false;
-    
-    // 核心修复：强制去除模型名称前后的空格，如果为空则使用默认全名
-    let modelName = (data.modelName || '').trim();
-    if (!modelName) {
-      modelName = 'qwen2.5-coder:7b';
-    }
-
-    if (!isEnabled) {
+    if (data.isEnabled === false) {
       sendResponse({ translatedText: "" });
       return;
     }
+    
+    let modelName = (data.modelName || '').trim() || 'qwen2.5-coder:7b';
 
-    // 2. 调用本地 Ollama API
-    // 【优化】重写了 System Prompt，要求模型作为影视字幕专家，进行地道、意译的转换
+    // 组装历史语境（最多保留最近的 2 条记录，防止记忆过载串扰）
+    const historyText = contextHistory.length > 0 
+      ? contextHistory.join(" ") 
+      : "无";
+
+    // 🌟 终极版 Prompt：专治机翻、串扰、断句稀碎
+    const systemPrompt = `你是一个专业的顶级影视字幕翻译官。请将下方【当前台词】实时翻译成地道、自然的中文。
+
+【翻译原则】（严格遵守）：
+1. 结合语境：参考【前情提要】，准确意译。如果遇到俚语、缩写或专业术语，请转化为符合中国人习惯的表达。
+2. 修复碎句：当前的台词可能是被截断的半句话，请结合语境顺滑补全逻辑，不要硬翻。
+3. 过滤噪音：如果台词中混入了明显的无关广告词、乱码或重复词汇，请自动忽略，只翻译主干内容。
+4. 绝对极简：只输出最终的中文翻译结果！绝不输出原英文，不要加任何解释，不要带引号。
+
+【前情提要】：${historyText}
+【当前台词】：${englishText}
+【中文翻译】：`;
+
     const response = await fetch('http://localhost:11434/api/generate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: modelName,
-        prompt: `作为资深影视字幕翻译专家，请将输入的英文字幕翻译成自然、地道、符合中国人表达习惯的中文。要求：\n1. 意译为主，摒弃生硬的机翻感，符合中文语境和表达逻辑。\n2. 根据上下文调整语序，遇到俚语转换为恰当的中文词汇。\n3. 绝对只输出最终的翻译结果，不要带任何标点符号、解释或原英文。\n\n英文: ${englishText}\n中文:`,
+        prompt: systemPrompt,
         stream: false
       })
     });
 
-    // 3. 处理模型名称无效导致的 400 错误
-    if (response.status === 400) {
-      const err = await response.json().catch(() => ({}));
-      if (err.error && err.error.includes("model")) {
-        sendResponse({ translatedText: `[模型名 "${modelName}" 无效，请打开插件设置重新输入]` });
-        return;
-      }
-    }
-
-    // 4. 处理模型未找到导致的 404 错误
-    if (response.status === 404) {
-      sendResponse({ translatedText: `[错误: 模型 "${modelName}" 未找到，请确保已下载该模型]` });
+    if (response.status === 400 || response.status === 404) {
+      sendResponse({ translatedText: `[模型配置有误，请检查]` });
       return;
     }
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      sendResponse({ translatedText: `[Ollama 错误: ${errorData.error || response.statusText}]` });
-      return;
-    }
+    if (!response.ok) throw new Error("Ollama API Error");
 
     const result = await response.json();
-    sendResponse({ translatedText: result.response.trim() });
+    let finalTranslation = result.response.trim();
+
+    // 翻译成功后，将当前的有效英文句子加入记忆库，供下一句参考
+    if (englishText.length > 10) {
+      contextHistory.push(englishText);
+      if (contextHistory.length > 2) contextHistory.shift(); // 永远只记最近2句
+    }
+
+    sendResponse({ translatedText: finalTranslation });
   } catch (error) {
     console.error("Fetch Error:", error);
-    sendResponse({ translatedText: "[本地模型连接失败，请确保终端正在运行 OLLAMA_ORIGINS=\"*\" ollama serve]" });
+    sendResponse({ translatedText: "[本地 AI 连接失败]" });
   }
 }
