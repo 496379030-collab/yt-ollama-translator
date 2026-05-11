@@ -1,11 +1,11 @@
 // content.js
-// 包含功能：UI渲染、防叠字、动态防抖、防饿死强制翻译、自动记忆清理
+// 包含功能：UI渲染、防叠字、智能语速自适应、柔和防饿死兜底、自动记忆清理
 let ui = null, cn = null, en = null;
 let currentText = "", translateTimer = null, hideTimer = null;
 let isPluginDead = false; 
 let isEnabled = true; 
 let currentVideoUrl = location.href; 
-let lastTranslateTime = Date.now(); // 🌟 新增：记录上一次翻译的时间
+let lastTranslateTime = Date.now(); // 🌟 记录上一次翻译的时间
 
 chrome.storage.local.get(['isEnabled'], (res) => {
   if (res.isEnabled !== undefined) isEnabled = res.isEnabled;
@@ -98,20 +98,27 @@ const observer = new MutationObserver(() => {
       const isPause = /[,，、]$/.test(text);
       const now = Date.now();
       
-      // 动态防抖等待时间设置
-      let delay = 1200; 
+      // 🌟 1. 基础分层：给正常语速博主充足的缓冲时间
+      let delay = 1500; 
       if (isSentenceEnd) delay = 200; 
-      else if (isPause) delay = 600;  
+      else if (isPause) delay = 800;  
       
-      // 🚀 核心修复：防饿死兜底机制
-      // 距离上次翻译如果超过 2 秒没动静，强制在 50 毫秒后翻译
-      if (now - lastTranslateTime > 2000) {
+      // 🌟 2. 语速自适应机制（核心）：
+      // 如果没有标点，但累积的字符数已超过 65 个（说明博主语速极快）
+      // 那么大幅缩短等待时间，只要捕捉到极其微小的换气停顿（400ms）就立刻翻译
+      if (text.length > 65) {
+        delay = Math.min(delay, 400); 
+      }
+
+      // 🌟 3. 柔和版防饿死兜底：
+      // 放宽到 3.5 秒。既能兜住极端情况下的死循环，又不会误伤正常博主的慢节奏
+      if (now - lastTranslateTime > 3500) {
         delay = 50; 
       }
 
       translateTimer = setTimeout(() => {
         if (!isContextValid()) return;
-        lastTranslateTime = Date.now(); // 🌟 记录本次成功发送翻译的时间
+        lastTranslateTime = Date.now(); 
         try {
           chrome.runtime.sendMessage({ action: 'translate', text: text }, (res) => {
             if (chrome.runtime.lastError) return;
