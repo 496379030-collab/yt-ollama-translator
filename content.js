@@ -1,11 +1,11 @@
 // content.js
-// 包含功能：UI渲染、防叠字、智能语速自适应、柔和防饿死兜底、自动记忆清理
+// 包含功能：UI渲染(锐利描边版)、防叠字、智能语速自适应、柔和防饿死兜底、自动记忆清理
 let ui = null, cn = null, en = null;
 let currentText = "", translateTimer = null, hideTimer = null;
 let isPluginDead = false; 
 let isEnabled = true; 
 let currentVideoUrl = location.href; 
-let lastTranslateTime = Date.now(); // 🌟 记录上一次翻译的时间
+let lastTranslateTime = Date.now(); 
 
 chrome.storage.local.get(['isEnabled'], (res) => {
   if (res.isEnabled !== undefined) isEnabled = res.isEnabled;
@@ -57,10 +57,11 @@ function createUI() {
   ui.style.cssText = "position:absolute;bottom:8%;left:50%;transform:translateX(-50%);width:85%;max-width:1000px;text-align:center;z-index:9999;pointer-events:none;word-break:keep-all;";
 
   cn = document.createElement('div');
-  cn.style.cssText = "color:#FFFFFF;font-size:28px;font-weight:bold;text-shadow: 0px 0px 4px rgba(0,0,0,0.8), 2px 2px 4px rgba(0,0,0,0.9); font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif; margin-bottom: 6px; line-height: 1.3;";
+  // 🌟 锐利黑边 + 轻微落影
+  cn.style.cssText = "color:#FFFFFF;font-size:28px;font-weight:bold;text-shadow: 1px 1px 0 rgba(0,0,0,0.8), -1px -1px 0 rgba(0,0,0,0.8), 1px -1px 0 rgba(0,0,0,0.8), -1px 1px 0 rgba(0,0,0,0.8), 0px 3px 5px rgba(0,0,0,0.5); font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif; margin-bottom: 6px; line-height: 1.3;";
   
   en = document.createElement('div');
-  en.style.cssText = "color:#DCDCDC;font-size:16px;font-weight:normal;text-shadow: 0px 0px 3px rgba(0,0,0,0.8); font-family: -apple-system, sans-serif; line-height: 1.2;";
+  en.style.cssText = "color:#DCDCDC;font-size:16px;font-weight:normal;text-shadow: 1px 1px 0 rgba(0,0,0,0.8), -1px -1px 0 rgba(0,0,0,0.8), 1px -1px 0 rgba(0,0,0,0.8), -1px 1px 0 rgba(0,0,0,0.8), 0px 2px 4px rgba(0,0,0,0.5); font-family: -apple-system, sans-serif; line-height: 1.2;";
 
   ui.appendChild(cn);
   ui.appendChild(en); 
@@ -98,20 +99,14 @@ const observer = new MutationObserver(() => {
       const isPause = /[,，、]$/.test(text);
       const now = Date.now();
       
-      // 🌟 1. 基础分层：给正常语速博主充足的缓冲时间
       let delay = 1500; 
       if (isSentenceEnd) delay = 200; 
       else if (isPause) delay = 800;  
       
-      // 🌟 2. 语速自适应机制（核心）：
-      // 如果没有标点，但累积的字符数已超过 65 个（说明博主语速极快）
-      // 那么大幅缩短等待时间，只要捕捉到极其微小的换气停顿（400ms）就立刻翻译
       if (text.length > 65) {
         delay = Math.min(delay, 400); 
       }
 
-      // 🌟 3. 柔和版防饿死兜底：
-      // 放宽到 3.5 秒。既能兜住极端情况下的死循环，又不会误伤正常博主的慢节奏
       if (now - lastTranslateTime > 3500) {
         delay = 50; 
       }
